@@ -107,7 +107,7 @@ def main():
             icon_2x.save(f'{iconset_path}/icon_{size}x{size}@2x.png')
 
     # Convert iconset to icns
-    output_path = '/Users/gabrycina/Desktop/AudioMonitor.app/Contents/Resources/AppIcon.icns'
+    output_path = os.path.expanduser('~/Desktop/AudioMonitor.app/Contents/Resources/AppIcon.icns')
     subprocess.run(['iconutil', '-c', 'icns', iconset_path, '-o', output_path], check=True)
 
     print(f"Icon created: {output_path}")
