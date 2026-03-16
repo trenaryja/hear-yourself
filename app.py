@@ -1,20 +1,48 @@
 #!/usr/bin/env python3
 """
-Audio Monitor - Menu Bar App
-Hear your microphone through your speakers with minimal latency.
+Menu bar app to hear your microphone through your speakers with minimal latency.
 
 Made with love by Gabrycina & Claude Opus
 """
 
 import rumps
 import sounddevice as sd
-import numpy as np
+import argparse
+import json
 import os
 import sys
 import fcntl
 
+from config import (
+    APP_NAME, APP_NAME_SLUG, GITHUB_URL,
+    DEFAULT_BLOCKSIZE, DEFAULT_SAMPLERATE, DEFAULT_CHANNELS,
+    LATENCY_PRESETS, audio_callback,
+)
+
 # Single instance lock file
-LOCK_FILE = os.path.expanduser("~/.audiomonitor.lock")
+LOCK_FILE = os.path.expanduser(f"~/.{APP_NAME_SLUG}.lock")
+
+# Preferences
+PREFS_DIR = os.path.expanduser(f"~/Library/Application Support/{APP_NAME}")
+PREFS_FILE = os.path.join(PREFS_DIR, "prefs.json")
+
+
+def load_prefs():
+    """Load preferences from disk. Returns defaults if file doesn't exist."""
+    defaults = {"auto_start": True}
+    try:
+        with open(PREFS_FILE) as f:
+            prefs = json.load(f)
+            return {**defaults, **prefs}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return defaults
+
+
+def save_prefs(prefs):
+    """Save preferences to disk."""
+    os.makedirs(PREFS_DIR, exist_ok=True)
+    with open(PREFS_FILE, 'w') as f:
+        json.dump(prefs, f)
 
 
 def ensure_single_instance():
@@ -32,29 +60,31 @@ def ensure_single_instance():
         return False
 
 
-class AudioMonitorApp(rumps.App):
+class App(rumps.App):
     def __init__(self):
-        super().__init__("Audio Monitor", icon=None, quit_button=None)
+        super().__init__(APP_NAME, icon=None, quit_button=None)
 
         self.stream = None
         self.is_running = False
-        self.input_device = None
-        self.output_device = None
-        self.blocksize = 64
-        self.samplerate = 48000
-
-        # Get default devices
         self.input_device = sd.default.device[0]
         self.output_device = sd.default.device[1]
+        self.blocksize = DEFAULT_BLOCKSIZE
+        self.samplerate = DEFAULT_SAMPLERATE
+        self.prefs = load_prefs()
 
-        # Build menu
+        # Track device names for hotplug recovery
+        self._input_name = None
+        self._output_name = None
+        self._waiting_for_reconnect = False
+
         self.build_menu()
-
-        # Update icon
         self.update_title()
+        rumps.Timer(self._check_devices, 2).start()
 
-        # Show welcome notification after a brief delay
-        rumps.Timer(self.show_welcome, 1).start()
+        if self.prefs["auto_start"]:
+            rumps.Timer(self._auto_start, 0.5).start()
+        else:
+            rumps.Timer(self.show_welcome, 1).start()
 
     def build_menu(self):
         """Build the menu with current devices."""
@@ -70,45 +100,36 @@ class AudioMonitorApp(rumps.App):
 
         self.menu.add(rumps.separator)
 
-        # Input devices submenu
-        input_menu = rumps.MenuItem("Input Device")
-        input_devices = self.get_input_devices()
-        for idx, name in input_devices:
-            item = rumps.MenuItem(
-                f"{'✓ ' if idx == self.input_device else '   '}{name}",
-                callback=lambda sender, i=idx: self.set_input_device(i)
-            )
-            input_menu.add(item)
-        self.menu.add(input_menu)
-
-        # Output devices submenu
-        output_menu = rumps.MenuItem("Output Device")
-        output_devices = self.get_output_devices()
-        for idx, name in output_devices:
-            item = rumps.MenuItem(
-                f"{'✓ ' if idx == self.output_device else '   '}{name}",
-                callback=lambda sender, i=idx: self.set_output_device(i)
-            )
-            output_menu.add(item)
-        self.menu.add(output_menu)
+        # Device submenus
+        for label, kind, attr in [("Input Device", "input", "input_device"),
+                                   ("Output Device", "output", "output_device")]:
+            menu = rumps.MenuItem(label)
+            current = getattr(self, attr)
+            for idx, name in self._get_devices(kind):
+                item = rumps.MenuItem(
+                    f"{'✓ ' if idx == current else '   '}{name}",
+                    callback=lambda sender, i=idx, a=attr: self._change_setting(a, i)
+                )
+                menu.add(item)
+            self.menu.add(menu)
 
         self.menu.add(rumps.separator)
 
         # Latency settings
         latency_menu = rumps.MenuItem("Latency")
-        latencies = [
-            (32, "Ultra Low (~1.3ms)"),
-            (64, "Low (~2.7ms)"),
-            (128, "Normal (~5.3ms)"),
-            (256, "High (~10.7ms)"),
-        ]
-        for blocksize, label in latencies:
+        for blocksize, label in LATENCY_PRESETS:
             item = rumps.MenuItem(
                 f"{'✓ ' if blocksize == self.blocksize else '   '}{label}",
-                callback=lambda sender, b=blocksize: self.set_latency(b)
+                callback=lambda sender, b=blocksize: self._change_setting('blocksize', b)
             )
             latency_menu.add(item)
         self.menu.add(latency_menu)
+
+        self.menu.add(rumps.separator)
+
+        # Settings
+        auto_label = f"{'✓ ' if self.prefs['auto_start'] else '   '}Start on Launch"
+        self.menu.add(rumps.MenuItem(auto_label, callback=self._toggle_auto_start))
 
         self.menu.add(rumps.separator)
 
@@ -116,34 +137,74 @@ class AudioMonitorApp(rumps.App):
         self.menu.add(rumps.MenuItem("About", callback=self.show_about))
         self.menu.add(rumps.MenuItem("Quit", callback=self.quit_app))
 
-    def get_input_devices(self):
-        """Get list of input devices."""
-        devices = []
-        for i, dev in enumerate(sd.query_devices()):
-            if dev['max_input_channels'] > 0:
-                devices.append((i, dev['name']))
-        return devices
+    def _get_devices(self, kind):
+        key = f'max_{kind}_channels'
+        return [(i, d['name']) for i, d in enumerate(sd.query_devices()) if d[key] > 0]
 
-    def get_output_devices(self):
-        """Get list of output devices."""
-        devices = []
-        for i, dev in enumerate(sd.query_devices()):
-            if dev['max_output_channels'] > 0:
-                devices.append((i, dev['name']))
-        return devices
+    def _device_name(self, idx):
+        """Get device name by index, or None if invalid."""
+        try:
+            return sd.query_devices(idx)['name']
+        except Exception:
+            return None
+
+    def _find_device_by_name(self, name, kind):
+        """Find a device index by name. Returns None if not found."""
+        for idx, dev_name in self._get_devices(kind):
+            if dev_name == name:
+                return idx
+        return None
+
+    def _check_devices(self, _=None):
+        """Polling watchdog — detects device loss and reconnection.
+        IMPORTANT: Never call sd.query_devices() while a stream is active.
+        It disrupts the real-time audio thread and causes progressive glitches."""
+        if self.is_running:
+            # Check stream health without querying devices
+            try:
+                if not self.stream or not self.stream.active:
+                    self.stop_stream()
+                    self._waiting_for_reconnect = True
+                    rumps.notification(
+                        title=f"{APP_NAME}",
+                        subtitle="Audio device disconnected",
+                        message="Monitoring paused. Will resume when the device reconnects.",
+                        sound=False
+                    )
+            except Exception:
+                self.stop_stream()
+                self._waiting_for_reconnect = True
+        elif self._waiting_for_reconnect:
+            # Check if remembered devices are back
+            in_idx = self._find_device_by_name(self._input_name, "input")
+            out_idx = self._find_device_by_name(self._output_name, "output")
+            if in_idx is not None and out_idx is not None:
+                self._waiting_for_reconnect = False
+                self.input_device = in_idx
+                self.output_device = out_idx
+                self.start_stream()
+                rumps.notification(
+                    title=f"{APP_NAME}",
+                    subtitle="Audio device reconnected",
+                    message="Monitoring resumed.",
+                    sound=False
+                )
+
+    def _auto_start(self, timer=None):
+        """Start monitoring automatically on launch (fires once)."""
+        if timer:
+            timer.stop()
+        self.start_stream()
+
+    def _toggle_auto_start(self, _):
+        """Toggle the auto-start preference."""
+        self.prefs["auto_start"] = not self.prefs["auto_start"]
+        save_prefs(self.prefs)
+        self.build_menu()
 
     def update_title(self):
         """Update menu bar title/icon."""
-        if self.is_running:
-            self.title = "🎙"
-        else:
-            self.title = "🎙️"  # Slightly different to show state (or use 🔇)
-
-    def audio_callback(self, indata, outdata, frames, time, status):
-        """Direct passthrough callback."""
-        if status:
-            print(status)
-        outdata[:] = indata
+        self.title = "🎙" if self.is_running else "🔇"
 
     def start_stream(self):
         """Start the audio stream."""
@@ -152,13 +213,15 @@ class AudioMonitorApp(rumps.App):
                 device=(self.input_device, self.output_device),
                 samplerate=self.samplerate,
                 blocksize=self.blocksize,
-                dtype=np.float32,
+                dtype='float32',
                 latency='low',
                 channels=1,
-                callback=self.audio_callback
+                callback=audio_callback
             )
             self.stream.start()
             self.is_running = True
+            self._input_name = self._device_name(self.input_device)
+            self._output_name = self._device_name(self.output_device)
             self.update_title()
             self.build_menu()
         except Exception as e:
@@ -178,44 +241,28 @@ class AudioMonitorApp(rumps.App):
         """Toggle monitoring on/off."""
         if self.is_running:
             self.stop_stream()
+            self._waiting_for_reconnect = False
         else:
             self.start_stream()
 
-    def set_input_device(self, device_idx):
-        """Set input device."""
+    def _change_setting(self, attr, value):
         was_running = self.is_running
         if was_running:
-            self.stop_stream()
-        self.input_device = device_idx
-        self.build_menu()
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+            self.is_running = False
+        setattr(self, attr, value)
         if was_running:
             self.start_stream()
-
-    def set_output_device(self, device_idx):
-        """Set output device."""
-        was_running = self.is_running
-        if was_running:
-            self.stop_stream()
-        self.output_device = device_idx
-        self.build_menu()
-        if was_running:
-            self.start_stream()
-
-    def set_latency(self, blocksize):
-        """Set latency (blocksize)."""
-        was_running = self.is_running
-        if was_running:
-            self.stop_stream()
-        self.blocksize = blocksize
-        self.build_menu()
-        if was_running:
-            self.start_stream()
+        else:
+            self.build_menu()
 
     def show_welcome(self, _=None):
         """Show welcome notification pointing to menu bar."""
         try:
             rumps.notification(
-                title="Audio Monitor is running!",
+                title=f"{APP_NAME} is running!",
                 subtitle="Look for 🎙 in your menu bar",
                 message="Click the microphone icon to start monitoring and change settings.",
                 sound=False
@@ -226,10 +273,10 @@ class AudioMonitorApp(rumps.App):
     def show_about(self, _):
         """Show about dialog."""
         rumps.alert(
-            title="Hear Yourself",
+            title=APP_NAME,
             message="Hear your microphone through your speakers\nwith minimal latency.\n\n"
                     "Made with ♥ by Gabrycina & Claude Opus\n\n"
-                    "github.com/gabrycina/hear-yourself",
+                    f"{GITHUB_URL}",
             ok="Nice!"
         )
 
@@ -241,20 +288,66 @@ class AudioMonitorApp(rumps.App):
             fcntl.flock(lock_file_handle, fcntl.LOCK_UN)
             lock_file_handle.close()
             os.remove(LOCK_FILE)
-        except:
+        except Exception:
             pass
         rumps.quit_application()
 
 
-if __name__ == "__main__":
-    if not ensure_single_instance():
-        # Already running - show alert and exit
-        rumps.alert(
-            title="Audio Monitor Already Running",
-            message="Look for 🎙 in your menu bar!\n\nThe app is already running. Click the microphone icon to access settings.",
-            ok="Got it!"
-        )
-        sys.exit(0)
+def run_cli(args):
+    """Run in headless CLI mode — stream audio in the terminal."""
+    if args.list:
+        print(sd.query_devices())
+        return
 
-    app = AudioMonitorApp()
-    app.run()
+    print(f"Sample rate: {args.samplerate} Hz | Block size: {args.blocksize} | Channels: {args.channels}")
+    print(f"Estimated latency: ~{(args.blocksize / args.samplerate) * 1000 * 2:.1f} ms")
+
+    for kind, idx in [("Input", args.input), ("Output", args.output)]:
+        if idx is not None:
+            print(f"{kind}: {sd.query_devices(idx)['name']}")
+        else:
+            print(f"{kind}: {sd.query_devices(kind=kind.lower())['name']} (default)")
+
+    print("\nPress Ctrl+C to stop...\n")
+
+    try:
+        with sd.Stream(
+            device=(args.input, args.output),
+            samplerate=args.samplerate,
+            blocksize=args.blocksize,
+            dtype='float32',
+            latency='low',
+            channels=args.channels,
+            callback=audio_callback
+        ):
+            while True:
+                sd.sleep(1000)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=APP_NAME)
+    parser.add_argument('--cli', action='store_true', help='Run in headless CLI mode')
+    parser.add_argument('-l', '--list', action='store_true', help='List audio devices')
+    parser.add_argument('-i', '--input', type=int, default=None, help='Input device index')
+    parser.add_argument('-o', '--output', type=int, default=None, help='Output device index')
+    parser.add_argument('-b', '--blocksize', type=int, default=DEFAULT_BLOCKSIZE)
+    parser.add_argument('-r', '--samplerate', type=int, default=DEFAULT_SAMPLERATE)
+    parser.add_argument('-c', '--channels', type=int, default=DEFAULT_CHANNELS)
+    args = parser.parse_args()
+
+    if args.cli or args.list:
+        run_cli(args)
+    else:
+        if not ensure_single_instance():
+            rumps.alert(
+                title=f"{APP_NAME} Already Running",
+                message="Look for 🎙 in your menu bar!\n\nThe app is already running. Click the microphone icon to access settings.",
+                ok="Got it!"
+            )
+            sys.exit(0)
+        App().run()
