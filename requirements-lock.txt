@@ -1,0 +1,14 @@
+altgraph==0.17.5
+cffi==2.0.0
+macholib==1.16.4
+modulegraph==0.19.7
+numpy==2.4.3
+packaging==26.0
+pillow==12.1.1
+py2app==0.28.10
+pycparser==3.0
+pyobjc-core==12.1
+pyobjc-framework-cocoa==12.1
+rumps==0.4.0
+setuptools==82.0.1
+sounddevice==0.5.5

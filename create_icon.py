@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Create a simple microphone icon for the Audio Monitor app."""
+"""Create a simple microphone icon for the app."""
 
 from PIL import Image, ImageDraw
 import subprocess
+import shutil
 import os
 
 def create_icon(size):
@@ -107,13 +108,11 @@ def main():
             icon_2x.save(f'{iconset_path}/icon_{size}x{size}@2x.png')
 
     # Convert iconset to icns
-    output_path = os.path.expanduser('~/Desktop/AudioMonitor.app/Contents/Resources/AppIcon.icns')
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.icns')
     subprocess.run(['iconutil', '-c', 'icns', iconset_path, '-o', output_path], check=True)
 
     print(f"Icon created: {output_path}")
 
-    # Cleanup
-    import shutil
     shutil.rmtree(iconset_path)
 
 if __name__ == '__main__':
