@@ -22,5 +22,5 @@ def _latency_label(name, blocksize):
 LATENCY_PRESETS = [
     _latency_label("Extreme", 32),
     _latency_label("Low", 64),
-    _latency_label("Test", 24000),
+    _latency_label("Test", 16384),
 ]
