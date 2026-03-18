@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Derive latency labels dynamically, remove unused CLI audio args
 ### Fixed
 - Prevent watchdog notification spam, teardown inconsistency, single-instance crash on cold start
+- Increase DMG intermediate size to 300m
 ### Internal
 - Switch to PyInstaller + uv, replace Makefile with build.py
 - Publish as fork, update attribution, bundle ID, version, add release pipeline
