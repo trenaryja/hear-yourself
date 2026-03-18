@@ -73,7 +73,7 @@ def dmg():
     TMP_DMG.unlink(missing_ok=True)
 
     run("hdiutil", "create",
-        "-size", "80m", "-fs", "HFS+",
+        "-size", "300m", "-fs", "HFS+",
         "-volname", APP_NAME,
         "-ov", str(TMP_DMG))
 
