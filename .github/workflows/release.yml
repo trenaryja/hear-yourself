@@ -22,9 +22,12 @@ jobs:
       - name: Build DMG
         run: uv run build.py --dmg
 
+      - name: Write release body
+        run: |
+          echo "See [CHANGELOG.md](https://github.com/trenaryja/hear-yourself/blob/${{ github.ref_name }}/CHANGELOG.md) for release notes." > release_notes.md
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: "dist/Hear Yourself.dmg"
-          body: |
-            See [CHANGELOG.md](https://github.com/trenaryja/hear-yourself/blob/${{ github.ref_name }}/CHANGELOG.md) for release notes.
+          body_path: release_notes.md
