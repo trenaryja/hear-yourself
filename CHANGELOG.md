@@ -16,5 +16,6 @@ All notable changes to this project will be documented in this file.
 ### Internal
 - Switch to PyInstaller + uv, replace Makefile with build.py
 - Publish as fork, update attribution, bundle ID, version, add release pipeline
+- Simplify release workflow, link to CHANGELOG.md instead of generating notes in CI
 ## [1.0.0] - 2025-12-30
 
