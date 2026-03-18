@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python
 """Create a simple microphone icon for the app."""
 
 from PIL import Image, ImageDraw

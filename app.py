@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run python
 """
 Menu bar app to hear your microphone through your speakers with minimal latency.
 
@@ -17,6 +17,14 @@ from config import (
     APP_NAME, APP_NAME_SLUG, GITHUB_URL,
     DEFAULT_BLOCKSIZE, SAMPLERATE, LATENCY_PRESETS,
 )
+
+
+def _passthrough(indata, outdata, frames, time, status):
+    """Audio callback: copies input buffer directly to output (mic → speakers)."""
+    try:
+        outdata[:] = indata
+    except ValueError:
+        outdata.fill(0)  # Shape mismatch (e.g. driver negotiated different channel count)
 
 # Single instance lock file
 LOCK_FILE = os.path.expanduser(f"~/.{APP_NAME_SLUG}.lock")
@@ -213,7 +221,7 @@ class App(rumps.App):
                 dtype='float32',
                 latency='low',
                 channels=1,
-                callback=lambda inp, out, *_: out.__setitem__(slice(None), inp)
+                callback=_passthrough
             )
             self.stream.start()
             self.is_running = True
@@ -255,8 +263,10 @@ class App(rumps.App):
         else:
             self.build_menu()
 
-    def show_welcome(self, _=None):
-        """Show welcome notification pointing to menu bar."""
+    def show_welcome(self, timer=None):
+        """Show welcome notification pointing to menu bar (fires once on launch)."""
+        if timer:
+            timer.stop()
         try:
             rumps.notification(
                 title=f"{APP_NAME} is running!",
@@ -314,7 +324,7 @@ def run_cli(args):
             dtype='float32',
             latency='low',
             channels=1,
-            callback=lambda inp, out, *_: out.__setitem__(slice(None), inp)
+            callback=_passthrough
         ):
             while True:
                 sd.sleep(1000)
