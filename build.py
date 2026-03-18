@@ -97,3 +97,9 @@ if __name__ == "__main__":
         dmg()
     else:
         build()
+    if "--deploy" in sys.argv:
+        dest = Path(f"/Applications/{APP_NAME}.app")
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(str(APP), str(dest))
+        print(f"✓ Deployed: {dest}")
