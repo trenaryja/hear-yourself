@@ -12,11 +12,14 @@ import json
 import os
 import sys
 import fcntl
+from pathlib import Path
 
 from config import (
     APP_NAME, APP_NAME_SLUG, GITHUB_URL,
     DEFAULT_BLOCKSIZE, SAMPLERATE, LATENCY_PRESETS,
 )
+
+_BASE = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).parent
 
 
 def _passthrough(indata, outdata, frames, time, status):
@@ -69,7 +72,7 @@ def ensure_single_instance():
 
 class App(rumps.App):
     def __init__(self):
-        super().__init__(APP_NAME, icon=None, quit_button=None)
+        super().__init__("", quit_button=None)
 
         self.stream = None
         self.is_running = False
@@ -172,7 +175,7 @@ class App(rumps.App):
                     self.stop_stream()
                     self._waiting_for_reconnect = True
                     rumps.notification(
-                        title=f"{APP_NAME}",
+                        title=APP_NAME,
                         subtitle="Audio device disconnected",
                         message="Monitoring paused. Will resume when the device reconnects.",
                         sound=False
@@ -191,16 +194,15 @@ class App(rumps.App):
                 self.output_device = out_idx
                 self.start_stream()
                 rumps.notification(
-                    title=f"{APP_NAME}",
+                    title=APP_NAME,
                     subtitle="Audio device reconnected",
                     message="Monitoring resumed.",
                     sound=False
                 )
 
-    def _auto_start(self, timer=None):
+    def _auto_start(self, timer):
         """Start monitoring automatically on launch (fires once)."""
-        if timer:
-            timer.stop()
+        timer.stop()
         self.start_stream()
 
     def _toggle_auto_start(self, _):
@@ -210,8 +212,12 @@ class App(rumps.App):
         self.build_menu()
 
     def update_title(self):
-        """Update menu bar title/icon."""
-        self.title = "🎙" if self.is_running else "🔇"
+        if self.is_running:
+            self.template = None
+            self.icon = str(_BASE / "icons" / "on.svg")
+        else:
+            self.template = True
+            self.icon = str(_BASE / "icons" / "off.svg")
 
     def start_stream(self):
         """Start the audio stream."""
@@ -261,10 +267,9 @@ class App(rumps.App):
         else:
             self.build_menu()
 
-    def show_welcome(self, timer=None):
+    def show_welcome(self, timer):
         """Show welcome notification pointing to menu bar (fires once on launch)."""
-        if timer:
-            timer.stop()
+        timer.stop()
         try:
             rumps.notification(
                 title=f"{APP_NAME} is running!",
@@ -337,8 +342,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument('--cli', action='store_true', help='Run in headless CLI mode')
     parser.add_argument('-l', '--list', action='store_true', help='List audio devices')
-    parser.add_argument('-i', '--input', type=int, default=None, help='Input device index')
-    parser.add_argument('-o', '--output', type=int, default=None, help='Output device index')
+    parser.add_argument('-i', '--input', type=int, help='Input device index')
+    parser.add_argument('-o', '--output', type=int, help='Output device index')
     parser.add_argument('-b', '--blocksize', type=int, default=DEFAULT_BLOCKSIZE)
 
     args = parser.parse_args()

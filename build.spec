@@ -5,16 +5,8 @@ from config import APP_NAME, APP_VERSION, BUNDLE_ID
 
 a = Analysis(
     ['app.py'],
-    pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=['rumps', 'sounddevice'],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
-    noarchive=False,
-    optimize=0,
+    hiddenimports=['rumps', 'sounddevice', 'numpy'],
+    datas=[('icons/*.svg', 'icons')],
 )
 pyz = PYZ(a.pure)
 
@@ -24,25 +16,15 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name=APP_NAME,
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
     upx=True,
     console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
     icon=['icon.icns'],
 )
 coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    strip=False,
     upx=True,
-    upx_exclude=[],
     name=APP_NAME,
 )
 app = BUNDLE(
@@ -52,12 +34,10 @@ app = BUNDLE(
     bundle_identifier=BUNDLE_ID,
     info_plist={
         'CFBundleName': APP_NAME,
-        'CFBundleDisplayName': APP_NAME,
         'CFBundleShortVersionString': APP_VERSION,
         'CFBundleVersion': APP_VERSION,
-        'LSMinimumSystemVersion': '11.0',
+        'LSMinimumSystemVersion': '13.0',
         'LSUIElement': True,
-        'NSHighResolutionCapable': True,
         'NSMicrophoneUsageDescription': f'{APP_NAME} needs microphone access to pass audio through to your speakers.',
     },
 )
