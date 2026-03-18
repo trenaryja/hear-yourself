@@ -15,8 +15,7 @@ import fcntl
 
 from config import (
     APP_NAME, APP_NAME_SLUG, GITHUB_URL,
-    DEFAULT_BLOCKSIZE, DEFAULT_SAMPLERATE, DEFAULT_CHANNELS,
-    LATENCY_PRESETS, audio_callback,
+    DEFAULT_BLOCKSIZE, SAMPLERATE, LATENCY_PRESETS,
 )
 
 # Single instance lock file
@@ -69,7 +68,6 @@ class App(rumps.App):
         self.input_device = sd.default.device[0]
         self.output_device = sd.default.device[1]
         self.blocksize = DEFAULT_BLOCKSIZE
-        self.samplerate = DEFAULT_SAMPLERATE
         self.prefs = load_prefs()
 
         # Track device names for hotplug recovery
@@ -211,12 +209,11 @@ class App(rumps.App):
         try:
             self.stream = sd.Stream(
                 device=(self.input_device, self.output_device),
-                samplerate=self.samplerate,
                 blocksize=self.blocksize,
                 dtype='float32',
                 latency='low',
                 channels=1,
-                callback=audio_callback
+                callback=lambda inp, out, *_: out.__setitem__(slice(None), inp)
             )
             self.stream.start()
             self.is_running = True
@@ -299,8 +296,8 @@ def run_cli(args):
         print(sd.query_devices())
         return
 
-    print(f"Sample rate: {args.samplerate} Hz | Block size: {args.blocksize} | Channels: {args.channels}")
-    print(f"Estimated latency: ~{(args.blocksize / args.samplerate) * 1000 * 2:.1f} ms")
+    print(f"Block size: {args.blocksize}")
+    print(f"Estimated latency: ~{(args.blocksize / SAMPLERATE) * 1000 * 2:.1f} ms")
 
     for kind, idx in [("Input", args.input), ("Output", args.output)]:
         if idx is not None:
@@ -313,12 +310,11 @@ def run_cli(args):
     try:
         with sd.Stream(
             device=(args.input, args.output),
-            samplerate=args.samplerate,
             blocksize=args.blocksize,
             dtype='float32',
             latency='low',
-            channels=args.channels,
-            callback=audio_callback
+            channels=1,
+            callback=lambda inp, out, *_: out.__setitem__(slice(None), inp)
         ):
             while True:
                 sd.sleep(1000)
@@ -336,8 +332,7 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--input', type=int, default=None, help='Input device index')
     parser.add_argument('-o', '--output', type=int, default=None, help='Output device index')
     parser.add_argument('-b', '--blocksize', type=int, default=DEFAULT_BLOCKSIZE)
-    parser.add_argument('-r', '--samplerate', type=int, default=DEFAULT_SAMPLERATE)
-    parser.add_argument('-c', '--channels', type=int, default=DEFAULT_CHANNELS)
+
     args = parser.parse_args()
 
     if args.cli or args.list:
