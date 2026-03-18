@@ -178,6 +178,7 @@ class App(rumps.App):
                         sound=False
                     )
             except Exception:
+                self.is_running = False  # prevent looping if stop_stream itself raises
                 self.stop_stream()
                 self._waiting_for_reconnect = True
         elif self._waiting_for_reconnect:
@@ -253,10 +254,7 @@ class App(rumps.App):
     def _change_setting(self, attr, value):
         was_running = self.is_running
         if was_running:
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
-            self.is_running = False
+            self.stop_stream()
         setattr(self, attr, value)
         if was_running:
             self.start_stream()
@@ -349,10 +347,18 @@ if __name__ == "__main__":
         run_cli(args)
     else:
         if not ensure_single_instance():
-            rumps.alert(
-                title=f"{APP_NAME} Already Running",
-                message="Look for 🎙 in your menu bar!\n\nThe app is already running. Click the microphone icon to access settings.",
-                ok="Got it!"
-            )
+            try:
+                rumps.alert(
+                    title=f"{APP_NAME} Already Running",
+                    message="Look for 🎙 in your menu bar!\n\nThe app is already running. Click the microphone icon to access settings.",
+                    ok="Got it!"
+                )
+            except Exception:
+                import subprocess
+                subprocess.run(
+                    ["osascript", "-e",
+                     f'display dialog "{APP_NAME} is already running." buttons {{"OK"}} default button "OK"'],
+                    check=False
+                )
             sys.exit(0)
         App().run()
