@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Build DMG
+        run: uv run build.py --dmg
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "dist/Hear Yourself.dmg"
+          generate_release_notes: true

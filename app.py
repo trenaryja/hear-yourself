@@ -2,7 +2,8 @@
 """
 Menu bar app to hear your microphone through your speakers with minimal latency.
 
-Made with love by Gabrycina & Claude Opus
+Made with ♥ by gabrycina & Claude Opus
+Continued by trenaryja
 """
 
 import rumps

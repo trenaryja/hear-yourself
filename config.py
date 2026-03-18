@@ -1,6 +1,6 @@
 APP_NAME = "Hear Yourself"
-APP_VERSION = "1.0.0"
-BUNDLE_ID_PREFIX = "com.gabrycina"
+APP_VERSION = "1.1.0"
+BUNDLE_ID_PREFIX = "com.trenaryja"
 
 APP_NAME_SLUG = APP_NAME.lower().replace(" ", "")
 BUNDLE_ID = f"{BUNDLE_ID_PREFIX}.{APP_NAME_SLUG}"
