@@ -35,7 +35,7 @@ def run(*args, **kwargs):
 
 
 def create_icns():
-    svg = Path("icons/off.svg")
+    svg = Path("icons/app-icon.svg")
     with tempfile.TemporaryDirectory() as tmp:
         iconset = Path(tmp) / "AppIcon.iconset"
         iconset.mkdir()

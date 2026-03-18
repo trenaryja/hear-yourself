@@ -53,6 +53,10 @@ The popular tool [LineIn](https://rogueamoeba.com/legacy/) was discontinued in 2
 ## Roadmap
 
 - **Homebrew Cask** — `brew install --cask trenaryja/tap/hear-yourself` will install the app with no quarantine step required (Homebrew handles it automatically). Planned for a future release.
+- **Configurable hotkey** — The default ⌃⇧M is a reasonable choice but may conflict with other apps. A settings UI to bind any key combination and save it to preferences is planned.
+- **Liquid glass icons** — Replace the current flat SVG icons with a macOS 26-style liquid glass aesthetic. The menu bar "on" icon already renders in full color; the "off" icon uses macOS template rendering, which limits what's possible there, but the app icon and active state can be redesigned.
+- **Language rewrite exploration** — Evaluating Swift as a longer-term rewrite target. A native Swift app using `NSStatusBar` + `AVAudioEngine` would eliminate the PyInstaller bundle (~150MB → ~5MB), enable proper notarization (removing the `xattr` install step), and use first-party macOS APIs throughout.
+- **Raycast extension** — A native Raycast extension to toggle monitoring, switch devices, and adjust volume without opening the menu bar. Raycast extensions are built with React + TypeScript and published to the [Raycast Store](https://www.raycast.com/store). Requires the app to expose a CLI or IPC interface that the extension can talk to (`app.py` already supports `--cli` mode as a starting point).
 
 ## Attribution
 

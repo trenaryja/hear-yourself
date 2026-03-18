@@ -266,10 +266,10 @@ class App(rumps.App):
     def update_title(self):
         if self.is_running:
             self.template = None
-            self.icon = str(_BASE / "icons" / "on.svg")
+            self.icon = str(_BASE / "icons" / "menu-bar-on.svg")
         else:
             self.template = True
-            self.icon = str(_BASE / "icons" / "off.svg")
+            self.icon = str(_BASE / "icons" / "menu-bar-off.svg")
 
     def start_stream(self):
         """Start the audio stream."""
