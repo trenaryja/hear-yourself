@@ -14,8 +14,14 @@ import sys
 import fcntl
 from pathlib import Path
 
+try:
+    from ServiceManagement import SMAppService
+    _SM_AVAILABLE = True
+except ImportError:
+    _SM_AVAILABLE = False
+
 from config import (
-    APP_NAME, APP_NAME_SLUG, GITHUB_URL,
+    APP_NAME, APP_NAME_SLUG,
     DEFAULT_BLOCKSIZE, SAMPLERATE, LATENCY_PRESETS,
 )
 
@@ -137,13 +143,15 @@ class App(rumps.App):
         self.menu.add(rumps.separator)
 
         # Settings
-        auto_label = f"{'✓ ' if self.prefs['auto_start'] else '   '}Start on Launch"
+        auto_label = f"{'✓ ' if self.prefs['auto_start'] else '   '}Start Monitoring on Launch"
         self.menu.add(rumps.MenuItem(auto_label, callback=self._toggle_auto_start))
+
+        if _SM_AVAILABLE:
+            login_label = f"{'✓ ' if self._login_item_enabled() else '   '}Launch at Login"
+            self.menu.add(rumps.MenuItem(login_label, callback=self._toggle_login_item))
 
         self.menu.add(rumps.separator)
 
-        # About
-        self.menu.add(rumps.MenuItem("About", callback=self.show_about))
         self.menu.add(rumps.MenuItem("Quit", callback=self.quit_app))
 
     def _get_devices(self, kind):
@@ -209,6 +217,20 @@ class App(rumps.App):
         """Toggle the auto-start preference."""
         self.prefs["auto_start"] = not self.prefs["auto_start"]
         save_prefs(self.prefs)
+        self.build_menu()
+
+    def _login_item_enabled(self):
+        return SMAppService.mainAppService().status() == 1  # SMAppServiceStatusEnabled
+
+    def _toggle_login_item(self, _):
+        svc = SMAppService.mainAppService()
+        try:
+            if self._login_item_enabled():
+                svc.unregisterAndReturnError_(None)
+            else:
+                svc.registerAndReturnError_(None)
+        except Exception as e:
+            rumps.alert("Error", f"Could not update login item:\n{e}")
         self.build_menu()
 
     def update_title(self):
@@ -280,15 +302,6 @@ class App(rumps.App):
         except Exception:
             pass  # Notification may fail in some environments, that's ok
 
-    def show_about(self, _):
-        """Show about dialog."""
-        rumps.alert(
-            title=APP_NAME,
-            message="Hear your microphone through your speakers\nwith minimal latency.\n\n"
-                    "Made with ♥ by Gabrycina & Claude Opus\n\n"
-                    f"{GITHUB_URL}",
-            ok="Nice!"
-        )
 
     def quit_app(self, _):
         """Quit the application."""

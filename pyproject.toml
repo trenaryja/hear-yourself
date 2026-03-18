@@ -12,4 +12,5 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pyinstaller>=6.0",
+    "pyobjc-framework-ServiceManagement>=10.0",
 ]
