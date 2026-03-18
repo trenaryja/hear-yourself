@@ -1,6 +1,5 @@
 APP_NAME = "Hear Yourself"
 APP_VERSION = "1.0.0"
-GITHUB_URL = "github.com/gabrycina/hear-yourself"
 BUNDLE_ID_PREFIX = "com.gabrycina"
 
 APP_NAME_SLUG = APP_NAME.lower().replace(" ", "")
@@ -11,9 +10,19 @@ BUNDLE_ID = f"{BUNDLE_ID_PREFIX}.{APP_NAME_SLUG}"
 # Values: 8, 16, 32, 64, 128, 256, 512, 1024. Must be a power of 2.
 # 32 is ideal for Apple Silicon.
 DEFAULT_BLOCKSIZE = 32
-
+DEFAULT_VOLUME = 1.0
+DEFAULT_HOTKEY = "<ctrl>+<shift>+m"
+HOTKEY_DISPLAY = "⌃⇧M"
 
 SAMPLERATE = 48000
+
+VOLUME_PRESETS = [
+    (0.5,  "50%"),
+    (0.75, "75%"),
+    (1.0,  "100% — Normal"),
+    (1.25, "125%"),
+    (1.5,  "150%"),
+]
 
 def _latency_label(name, blocksize):
     ms = (blocksize / SAMPLERATE) * 2 * 1000

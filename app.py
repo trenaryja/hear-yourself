@@ -22,18 +22,13 @@ except ImportError:
 
 from config import (
     APP_NAME, APP_NAME_SLUG,
-    DEFAULT_BLOCKSIZE, SAMPLERATE, LATENCY_PRESETS,
+    DEFAULT_BLOCKSIZE, DEFAULT_VOLUME, DEFAULT_HOTKEY, HOTKEY_DISPLAY,
+    SAMPLERATE, LATENCY_PRESETS, VOLUME_PRESETS,
 )
 
 _BASE = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).parent
 
 
-def _passthrough(indata, outdata, frames, time, status):
-    """Audio callback: copies input buffer directly to output (mic → speakers)."""
-    try:
-        outdata[:] = indata
-    except ValueError:
-        outdata.fill(0)  # Shape mismatch (e.g. driver negotiated different channel count)
 
 # Single instance lock file
 LOCK_FILE = os.path.expanduser(f"~/.{APP_NAME_SLUG}.lock")
@@ -45,7 +40,7 @@ PREFS_FILE = os.path.join(PREFS_DIR, "prefs.json")
 
 def load_prefs():
     """Load preferences from disk. Returns defaults if file doesn't exist."""
-    defaults = {"auto_start": True}
+    defaults = {"auto_start": True, "volume": DEFAULT_VOLUME}
     try:
         with open(PREFS_FILE) as f:
             prefs = json.load(f)
@@ -85,6 +80,7 @@ class App(rumps.App):
         self.input_device = sd.default.device[0]
         self.output_device = sd.default.device[1]
         self.blocksize = DEFAULT_BLOCKSIZE
+        self.volume = DEFAULT_VOLUME
         self.prefs = load_prefs()
 
         # Track device names for hotplug recovery
@@ -95,6 +91,7 @@ class App(rumps.App):
         self.build_menu()
         self.update_title()
         rumps.Timer(self._check_devices, 2).start()
+        self._start_hotkey_listener()
 
         if self.prefs["auto_start"]:
             rumps.Timer(self._auto_start, 0.5).start()
@@ -108,10 +105,10 @@ class App(rumps.App):
         # Status / Toggle
         if self.is_running:
             self.menu.add(rumps.MenuItem("● Monitoring Active", callback=None))
-            self.menu.add(rumps.MenuItem("Stop Monitoring", callback=self.toggle_monitoring))
+            self.menu.add(rumps.MenuItem(f"Stop Monitoring  {HOTKEY_DISPLAY}", callback=self.toggle_monitoring))
         else:
             self.menu.add(rumps.MenuItem("○ Monitoring Stopped", callback=None))
-            self.menu.add(rumps.MenuItem("Start Monitoring", callback=self.toggle_monitoring))
+            self.menu.add(rumps.MenuItem(f"Start Monitoring  {HOTKEY_DISPLAY}", callback=self.toggle_monitoring))
 
         self.menu.add(rumps.separator)
 
@@ -123,7 +120,7 @@ class App(rumps.App):
             for idx, name in self._get_devices(kind):
                 item = rumps.MenuItem(
                     f"{'✓ ' if idx == current else '   '}{name}",
-                    callback=lambda sender, i=idx, a=attr: self._change_setting(a, i)
+                    callback=lambda _, i=idx, a=attr: self._change_setting(a, i)
                 )
                 menu.add(item)
             self.menu.add(menu)
@@ -135,10 +132,20 @@ class App(rumps.App):
         for blocksize, label in LATENCY_PRESETS:
             item = rumps.MenuItem(
                 f"{'✓ ' if blocksize == self.blocksize else '   '}{label}",
-                callback=lambda sender, b=blocksize: self._change_setting('blocksize', b)
+                callback=lambda _, b=blocksize: self._change_setting('blocksize', b)
             )
             latency_menu.add(item)
         self.menu.add(latency_menu)
+
+        # Volume
+        volume_menu = rumps.MenuItem("Volume")
+        for vol, label in VOLUME_PRESETS:
+            item = rumps.MenuItem(
+                f"{'✓ ' if vol == self.volume else '   '}{label}",
+                callback=lambda _, v=vol: self._change_volume(v)
+            )
+            volume_menu.add(item)
+        self.menu.add(volume_menu)
 
         self.menu.add(rumps.separator)
 
@@ -153,6 +160,29 @@ class App(rumps.App):
         self.menu.add(rumps.separator)
 
         self.menu.add(rumps.MenuItem("Quit", callback=self.quit_app))
+
+    def _passthrough(self, indata, outdata, _frames, _time, _status):
+        """Audio callback: copies input buffer directly to output (mic → speakers)."""
+        try:
+            outdata[:] = indata if self.volume == 1.0 else indata * self.volume
+        except ValueError:
+            outdata.fill(0)  # Shape mismatch (e.g. driver negotiated different channel count)
+
+    def _change_volume(self, value):
+        self.volume = value
+        self.prefs["volume"] = value
+        save_prefs(self.prefs)
+        self.build_menu()
+
+    def _start_hotkey_listener(self):
+        try:
+            from pynput import keyboard
+            hotkey = self.prefs.get("hotkey", DEFAULT_HOTKEY)
+            listener = keyboard.GlobalHotKeys({hotkey: lambda: self.toggle_monitoring(None)})
+            listener.daemon = True
+            listener.start()
+        except Exception:
+            pass  # Accessibility permission not granted or pynput unavailable
 
     def _get_devices(self, kind):
         key = f'max_{kind}_channels'
@@ -189,7 +219,6 @@ class App(rumps.App):
                         sound=False
                     )
             except Exception:
-                self.is_running = False  # prevent looping if stop_stream itself raises
                 self.stop_stream()
                 self._waiting_for_reconnect = True
         elif self._waiting_for_reconnect:
@@ -246,11 +275,12 @@ class App(rumps.App):
         try:
             self.stream = sd.Stream(
                 device=(self.input_device, self.output_device),
+                samplerate=SAMPLERATE,
                 blocksize=self.blocksize,
                 dtype='float32',
                 latency='low',
                 channels=1,
-                callback=_passthrough
+                callback=self._passthrough
             )
             self.stream.start()
             self.is_running = True
@@ -333,14 +363,21 @@ def run_cli(args):
 
     print("\nPress Ctrl+C to stop...\n")
 
+    def _cli_passthrough(indata, outdata, _frames, _time, _status):
+        try:
+            outdata[:] = indata
+        except ValueError:
+            outdata.fill(0)
+
     try:
         with sd.Stream(
             device=(args.input, args.output),
+            samplerate=SAMPLERATE,
             blocksize=args.blocksize,
             dtype='float32',
             latency='low',
             channels=1,
-            callback=_passthrough
+            callback=_cli_passthrough
         ):
             while True:
                 sd.sleep(1000)
