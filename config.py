@@ -9,7 +9,7 @@ BUNDLE_ID = f"{BUNDLE_ID_PREFIX}.{APP_NAME_SLUG}"
 # Frames per audio buffer. Directly controls latency: latency ≈ (blocksize / samplerate) * 2.
 # Lower = less delay, but more CPU pressure per second (more frequent callbacks).
 # Values: 8, 16, 32, 64, 128, 256, 512, 1024. Must be a power of 2.
-# 32 is ideal for Apple Silicon. Intel Macs may need 64-128.
+# 32 is ideal for Apple Silicon.
 DEFAULT_BLOCKSIZE = 32
 
 
