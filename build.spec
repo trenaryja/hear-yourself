@@ -5,7 +5,7 @@ from config import APP_NAME, APP_VERSION, BUNDLE_ID
 
 a = Analysis(
     ['app.py'],
-    hiddenimports=['rumps', 'sounddevice', 'numpy'],
+    hiddenimports=['rumps', 'sounddevice', 'numpy', 'pynput'],
     datas=[('icons/*.svg', 'icons')],
 )
 pyz = PYZ(a.pure)
